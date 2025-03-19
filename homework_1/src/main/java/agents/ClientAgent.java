@@ -19,7 +19,7 @@ public class ClientAgent extends Agent {
 
     @Override
     protected void setup() {
-        System.out.println(getLocalName() + " - uruchomiony.");
+        System.out.println(getLocalName() + " - started.");
 
         addBehaviour(new WakerBehaviour(this, 2000) {
             @Override
@@ -36,12 +36,14 @@ public class ClientAgent extends Agent {
         template.addServices(sd);
         try {
             DFAgentDescription[] result = DFService.search(this, template);
-            System.out.println(getLocalName() + " znalazł " + result.length + " DeliveryAgentów.");
+            System.out.println(getLocalName() + " found " + result.length + " Delivery Agents.");
             if (result.length > 0) {
                 for (DFAgentDescription dfd : result) {
                     deliveryAgents.add(dfd.getName());
                 }
                 sendOrderRequest();
+            } else {
+                System.out.println("No available delivery agents.");
             }
         } catch (FIPAException fe) {
             fe.printStackTrace();
@@ -55,35 +57,58 @@ public class ClientAgent extends Agent {
             orderMsg.setContent(ORDER_DETAILS);
             orderMsg.setConversationId("order-delivery");
             send(orderMsg);
-            System.out.println(getLocalName() + " wysłał zamówienie do " + aid.getLocalName());
+            System.out.println(getLocalName() + " sent an order request to " + aid.getLocalName());
         }
         addBehaviour(new OfferCollector());
     }
 
     private class OfferCollector extends CyclicBehaviour {
+        private long startTime = System.currentTimeMillis();
+        private final long TIMEOUT = 5000; // 5 seconds
+        private boolean offerSelected = false; // new flag for calling selectBestOffer() only one time
+
         @Override
         public void action() {
             ACLMessage msg = receive();
             if (msg != null && "offer-delivery".equals(msg.getConversationId())) {
-                System.out.println(getLocalName() + " otrzymał ofertę: " + msg.getContent());
+                System.out.println(getLocalName() + " received an offer: " + msg.getContent());
                 try {
                     double price = Double.parseDouble(msg.getContent().replaceAll("[^0-9.]", ""));
                     receivedOffers.put(msg.getSender(), price);
-                    if (receivedOffers.size() == deliveryAgents.size()) {
+                    if (receivedOffers.size() == deliveryAgents.size() && !offerSelected) {
+                        offerSelected = true;
                         selectBestOffer();
                     }
                 } catch (NumberFormatException e) {
-                    System.out.println("Błąd parsowania ceny z oferty.");
+                    System.out.println("Error parsing price from the offer.");
                 }
             } else {
-                block();
+                long elapsed = System.currentTimeMillis() - startTime;
+                if (elapsed >= TIMEOUT) {
+                    if (!offerSelected) {
+                        if (receivedOffers.isEmpty()) {
+                            System.out.println("No offers received within the time limit.");
+                        } else {
+                            offerSelected = true;
+                            selectBestOffer();
+                        }
+                    }
+                    myAgent.removeBehaviour(this);
+                } else {
+                    block();
+                }
             }
         }
     }
 
     private void selectBestOffer() {
+        if (receivedOffers.isEmpty()) {
+            System.out.println(getLocalName() + " did not receive any offers, order canceled.");
+            return;
+        }
         selectedDeliveryAgent = Collections.min(receivedOffers.entrySet(), Map.Entry.comparingByValue()).getKey();
-        System.out.println(getLocalName() + " wybrał najtańszego dostawcę: " + selectedDeliveryAgent.getLocalName());
+        System.out.println(
+                getLocalName() + " selected the cheapest delivery agent: " + selectedDeliveryAgent.getLocalName());
 
         ACLMessage payment = new ACLMessage(ACLMessage.INFORM);
         payment.addReceiver(selectedDeliveryAgent);

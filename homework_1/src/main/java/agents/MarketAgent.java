@@ -12,20 +12,20 @@ import java.util.Map;
 
 public class MarketAgent extends Agent {
 
-    // Przykładowy inwentarz: produkt -> cena
+    // Example inventory: product -> price
     private Map<String, Double> inventory;
 
     @Override
     protected void setup() {
-        System.out.println(getLocalName() + " - uruchomiony.");
+        System.out.println(getLocalName() + " - started.");
 
-        // Inicjalizacja inwentarza
+        // Initializing inventory
         inventory = new HashMap<>();
         inventory.put("milk", 5.0);
         inventory.put("coffee", 30.0);
         inventory.put("rice", 4.0);
 
-        // Rejestracja MarketAgent w DF
+        // Registering MarketAgent in DF
         ServiceDescription sd = new ServiceDescription();
         sd.setType("MarketService");
         sd.setName(getLocalName() + "-MarketService");
@@ -34,18 +34,18 @@ public class MarketAgent extends Agent {
         dfd.addServices(sd);
         try {
             DFService.register(this, dfd);
-            System.out.println(getLocalName() + " zarejestrował się w DF jako: " + sd.getName());
+            System.out.println(getLocalName() + " registered in DF as: " + sd.getName());
         } catch (FIPAException fe) {
             fe.printStackTrace();
         }
 
-        // Behawior reagujący na CFP od DeliveryAgentów
+        // Behavior responding to CFP from DeliveryAgents
         addBehaviour(new CyclicBehaviour() {
             @Override
             public void action() {
                 ACLMessage cfp = receive();
                 if (cfp != null && "market-cfp".equals(cfp.getConversationId())) {
-                    System.out.println(getLocalName() + " otrzymał zapytanie CFP: " + cfp.getContent());
+                    System.out.println(getLocalName() + " received CFP request: " + cfp.getContent());
                     String[] items = cfp.getContent().split(",");
                     StringBuilder proposal = new StringBuilder();
                     for (String item : items) {
@@ -62,7 +62,7 @@ public class MarketAgent extends Agent {
                     reply.setConversationId("market-cfp");
                     reply.setContent(proposal.toString());
                     send(reply);
-                    System.out.println(getLocalName() + " wysłał propozycję: " + proposal.toString());
+                    System.out.println(getLocalName() + " sent a proposal: " + proposal.toString());
                 } else {
                     block();
                 }
@@ -77,6 +77,6 @@ public class MarketAgent extends Agent {
         } catch (FIPAException fe) {
             fe.printStackTrace();
         }
-        System.out.println(getLocalName() + " zakończył działanie.");
+        System.out.println(getLocalName() + " has shut down.");
     }
 }

@@ -9,14 +9,14 @@ import jade.wrapper.StaleProxyException;
 
 public class MainContainer {
     public static void main(String[] args) {
-        // Inicjalizacja środowiska JADE
+        // Initializing JADE environment
         Runtime rt = Runtime.instance();
         Profile p = new ProfileImpl();
         AgentContainer mainContainer = rt.createMainContainer(p);
-        System.out.println("Główne środowisko JADE uruchomione.");
+        System.out.println("Main JADE environment started.");
 
         try {
-            // Tworzenie i uruchamianie agentów
+            // Creating and starting agents
             AgentController clientAgent = mainContainer.createNewAgent("client", "agents.ClientAgent", null);
             AgentController deliveryAgent = mainContainer.createNewAgent("delivery", "agents.DeliveryAgent", null);
             AgentController marketAgent = mainContainer.createNewAgent("market", "agents.MarketAgent", null);
@@ -25,7 +25,7 @@ public class MainContainer {
             deliveryAgent.start();
             marketAgent.start();
 
-            System.out.println("Agenci uruchomieni.");
+            System.out.println("Agents started.");
         } catch (StaleProxyException e) {
             e.printStackTrace();
         }

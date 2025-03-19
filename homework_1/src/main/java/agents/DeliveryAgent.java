@@ -17,9 +17,9 @@ public class DeliveryAgent extends Agent {
 
     @Override
     protected void setup() {
-        System.out.println(getLocalName() + " - uruchomiony.");
+        System.out.println(getLocalName() + " - started.");
 
-        // Rejestracja DeliveryAgent w DF
+        // Registering DeliveryAgent in DF
         ServiceDescription sd = new ServiceDescription();
         sd.setType("DeliveryService");
         sd.setName(getLocalName() + "-DeliveryService");
@@ -28,22 +28,22 @@ public class DeliveryAgent extends Agent {
         dfd.addServices(sd);
         try {
             DFService.register(this, dfd);
-            System.out.println(getLocalName() + " zarejestrował się w DF jako: " + sd.getName());
+            System.out.println(getLocalName() + " registered in DF as: " + sd.getName());
         } catch (FIPAException fe) {
             fe.printStackTrace();
         }
 
-        // Behawior obsługujący zamówienia od ClientAgentów (używamy MessageTemplate)
+        // Behavior handling order requests from ClientAgents (using MessageTemplate)
         addBehaviour(new CyclicBehaviour() {
             @Override
             public void action() {
                 MessageTemplate mt = MessageTemplate.MatchConversationId("order-delivery");
                 ACLMessage msg = receive(mt);
                 if (msg != null) {
-                    System.out.println(getLocalName() + " otrzymał zamówienie: " + msg.getContent());
+                    System.out.println(getLocalName() + " received an order: " + msg.getContent());
                     orderDetails = msg.getContent().replace("Order: ", "").trim();
                     clientAgent = msg.getSender();
-                    // Rozpoczęcie procesu wyceny poprzez komunikację z MarketAgentami
+                    // Start pricing process by communicating with MarketAgents
                     addBehaviour(new PriceEstimationBehaviour());
                 } else {
                     block();
@@ -51,7 +51,7 @@ public class DeliveryAgent extends Agent {
             }
         });
 
-        // Behawior oczekujący na potwierdzenie płatności od ClientAgent (używamy
+        // Behavior waiting for payment confirmation from ClientAgent (using
         // MessageTemplate)
         addBehaviour(new CyclicBehaviour() {
             @Override
@@ -59,13 +59,13 @@ public class DeliveryAgent extends Agent {
                 MessageTemplate mt = MessageTemplate.MatchConversationId("payment-delivery");
                 ACLMessage paymentMsg = receive(mt);
                 if (paymentMsg != null) {
-                    System.out.println(getLocalName() + " otrzymał płatność: " + paymentMsg.getContent());
-                    // Finalizacja zamówienia – wysłanie potwierdzenia realizacji
+                    System.out.println(getLocalName() + " received payment: " + paymentMsg.getContent());
+                    // Finalizing order – sending confirmation message
                     ACLMessage confirmation = paymentMsg.createReply();
                     confirmation.setConversationId("confirmation-delivery");
-                    confirmation.setContent("Zamówienie zrealizowane.");
+                    confirmation.setContent("Order completed.");
                     send(confirmation);
-                    System.out.println(getLocalName() + " wysłał potwierdzenie realizacji zamówienia.");
+                    System.out.println(getLocalName() + " sent order completion confirmation.");
                 } else {
                     block();
                 }
@@ -76,15 +76,15 @@ public class DeliveryAgent extends Agent {
     private class PriceEstimationBehaviour extends Behaviour {
         private boolean finished = false;
         private List<AID> marketAgents = new ArrayList<>();
-        // Mapy z propozycjami – klucz: AID MarketAgenta, wartość: surowa treść
-        // propozycji (np. "milk=5.0,coffee=30.0,rice=4.0")
+        // Maps with proposals – key: MarketAgent AID, value: raw proposal content
+        // (e.g., "milk=5.0,coffee=30.0,rice=4.0")
         private Map<AID, String> proposals = new HashMap<>();
         private long startTime;
-        private final long TIMEOUT = 5000; // 5 sekund
+        private final long TIMEOUT = 5000; // 5 seconds
 
         @Override
         public void onStart() {
-            // Wyszukiwanie MarketAgentów w DF
+            // Searching for MarketAgents in DF
             DFAgentDescription template = new DFAgentDescription();
             ServiceDescription sd = new ServiceDescription();
             sd.setType("MarketService");
@@ -94,12 +94,12 @@ public class DeliveryAgent extends Agent {
                 for (DFAgentDescription dfd : result) {
                     marketAgents.add(dfd.getName());
                 }
-                System.out.println(getLocalName() + " znalazł " + marketAgents.size() + " MarketAgentów.");
+                System.out.println(getLocalName() + " found " + marketAgents.size() + " MarketAgents.");
             } catch (FIPAException fe) {
                 fe.printStackTrace();
             }
 
-            // Wysłanie CFP do wszystkich MarketAgentów
+            // Sending CFP to all MarketAgents
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
             for (AID market : marketAgents) {
                 cfp.addReceiver(market);
@@ -107,7 +107,7 @@ public class DeliveryAgent extends Agent {
             cfp.setContent(orderDetails);
             cfp.setConversationId("market-cfp");
             send(cfp);
-            System.out.println(getLocalName() + " wysłał CFP do MarketAgentów z treścią: " + orderDetails);
+            System.out.println(getLocalName() + " sent CFP to MarketAgents with content: " + orderDetails);
             startTime = System.currentTimeMillis();
         }
 
@@ -119,11 +119,11 @@ public class DeliveryAgent extends Agent {
             long elapsed = System.currentTimeMillis() - startTime;
             long remainingTime = TIMEOUT - elapsed;
             if (remainingTime > 0) {
-                // Odbieramy wiadomość blokująco z limitem czasu
+                // Receiving message in blocking mode with a timeout
                 ACLMessage reply = myAgent.blockingReceive(mt, remainingTime);
                 if (reply != null) {
                     proposals.put(reply.getSender(), reply.getContent());
-                    System.out.println(getLocalName() + " otrzymał propozycję od "
+                    System.out.println(getLocalName() + " received a proposal from "
                             + reply.getSender().getLocalName() + ": " + reply.getContent());
                 }
             }
@@ -137,7 +137,7 @@ public class DeliveryAgent extends Agent {
 
         @Override
         public int onEnd() {
-            // Uzupełniona logika – iteracyjny wybór rynków
+            // Processing received proposals and selecting the best options
             String[] itemsArray = orderDetails.split(",");
             List<String> remainingItems = new ArrayList<>();
             for (String item : itemsArray) {
@@ -147,8 +147,7 @@ public class DeliveryAgent extends Agent {
             double cumulativeCost = 0.0;
             List<String> selectedMarkets = new ArrayList<>();
 
-            // Przetwarzamy otrzymane propozycje – przekształcamy je na mapy produktów z
-            // cenami
+            // Transforming received proposals into product-price maps
             Map<AID, Map<String, Double>> marketProposals = new HashMap<>();
             for (Map.Entry<AID, String> entry : proposals.entrySet()) {
                 Map<String, Double> productPrices = new HashMap<>();
@@ -161,14 +160,14 @@ public class DeliveryAgent extends Agent {
                             double price = Double.parseDouble(keyVal[1].trim());
                             productPrices.put(product, price);
                         } catch (NumberFormatException e) {
-                            // ignoruj nieprawidłową cenę
+                            // Ignore invalid price
                         }
                     }
                 }
                 marketProposals.put(entry.getKey(), productPrices);
             }
 
-            // Iteracyjny wybór rynków dla pokrycia całego zamówienia
+            // Iterative selection of markets to fulfill the entire order
             boolean progress = true;
             while (!remainingItems.isEmpty() && progress) {
                 AID bestMarket = null;
@@ -176,7 +175,7 @@ public class DeliveryAgent extends Agent {
                 double bestCost = Double.MAX_VALUE;
                 List<String> bestProducts = new ArrayList<>();
 
-                // Dla każdego rynku określamy, które z pozostałych produktów są dostępne
+                // Checking available products for each market
                 for (Map.Entry<AID, Map<String, Double>> entry : marketProposals.entrySet()) {
                     Map<String, Double> productPrices = entry.getValue();
                     List<String> availableProducts = new ArrayList<>();
@@ -201,30 +200,30 @@ public class DeliveryAgent extends Agent {
                     progress = false;
                     break;
                 }
-                // Zapisujemy wybrany rynek oraz usuwamy pokryte produkty
+                // Storing selected market and removing covered products
                 cumulativeCost += bestCost;
-                selectedMarkets.add(bestMarket.getLocalName() + " (produkty: " + String.join(", ", bestProducts) + ")");
+                selectedMarkets.add(bestMarket.getLocalName() + " (products: " + String.join(", ", bestProducts) + ")");
                 remainingItems.removeAll(bestProducts);
             }
 
             String offer;
             if (!remainingItems.isEmpty()) {
-                // Nie udało się zebrać wszystkich produktów
-                offer = "Nie można zrealizować całego zamówienia. Brakuje: " + String.join(", ", remainingItems);
+                // Unable to fulfill the entire order
+                offer = "Unable to complete the full order. Missing: " + String.join(", ", remainingItems);
             } else {
-                // Dodajemy stałą opłatę (np. 10zl)
+                // Adding fixed delivery fee (e.g., 10zl)
                 double finalPrice = cumulativeCost + 10;
-                offer = "Oferta: Final Price = " + finalPrice + "zl (wybrane rynki: "
+                offer = "Offer: Final Price = " + finalPrice + "zl (selected markets: "
                         + String.join("; ", selectedMarkets) + ")";
             }
 
-            // Wysyłamy ofertę do ClientAgent
+            // Sending offer to ClientAgent
             ACLMessage offerMsg = new ACLMessage(ACLMessage.INFORM);
             offerMsg.addReceiver(clientAgent);
             offerMsg.setConversationId("offer-delivery");
             offerMsg.setContent(offer);
             send(offerMsg);
-            System.out.println(getLocalName() + " wysłał ofertę do ClientAgent: " + offer);
+            System.out.println(getLocalName() + " sent an offer to ClientAgent: " + offer);
 
             return super.onEnd();
         }
@@ -237,6 +236,6 @@ public class DeliveryAgent extends Agent {
         } catch (FIPAException fe) {
             fe.printStackTrace();
         }
-        System.out.println(getLocalName() + " zakończył działanie.");
+        System.out.println(getLocalName() + " has shut down.");
     }
 }
