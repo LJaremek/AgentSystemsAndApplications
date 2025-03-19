@@ -7,11 +7,23 @@ import jade.domain.FIPAAgentManagement.*;
 import jade.domain.FIPAException;
 import jade.lang.acl.ACLMessage;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class MarketAgent extends Agent {
+
+    // Przykładowy inwentarz: produkt -> cena
+    private Map<String, Double> inventory;
 
     @Override
     protected void setup() {
         System.out.println(getLocalName() + " - uruchomiony.");
+
+        // Inicjalizacja inwentarza
+        inventory = new HashMap<>();
+        inventory.put("milk", 5.0);
+        inventory.put("coffee", 30.0);
+        inventory.put("rice", 4.0);
 
         // Rejestracja MarketAgent w DF
         ServiceDescription sd = new ServiceDescription();
@@ -27,19 +39,30 @@ public class MarketAgent extends Agent {
             fe.printStackTrace();
         }
 
-        // Dodanie behawioru do obsługi zapytań cenowych od DeliveryAgentów
+        // Behawior reagujący na CFP od DeliveryAgentów
         addBehaviour(new CyclicBehaviour() {
             @Override
             public void action() {
-                ACLMessage inquiry = receive();
-                if (inquiry != null) {
-                    System.out.println(getLocalName() + " otrzymał zapytanie: " + inquiry.getContent());
-                    ACLMessage reply = inquiry.createReply();
-                    reply.setPerformative(ACLMessage.INFORM);
-                    // Przykładowa odpowiedź – ceny produktów
-                    reply.setContent("Ceny: milk=5zl, coffee=30zl, rice=4zl");
+                ACLMessage cfp = receive();
+                if (cfp != null && "market-cfp".equals(cfp.getConversationId())) {
+                    System.out.println(getLocalName() + " otrzymał zapytanie CFP: " + cfp.getContent());
+                    String[] items = cfp.getContent().split(",");
+                    StringBuilder proposal = new StringBuilder();
+                    for (String item : items) {
+                        item = item.trim();
+                        if (inventory.containsKey(item)) {
+                            proposal.append(item).append("=").append(inventory.get(item)).append(",");
+                        }
+                    }
+                    if (proposal.length() > 0) {
+                        proposal.deleteCharAt(proposal.length() - 1);
+                    }
+                    ACLMessage reply = cfp.createReply();
+                    reply.setPerformative(ACLMessage.PROPOSE);
+                    reply.setConversationId("market-cfp");
+                    reply.setContent(proposal.toString());
                     send(reply);
-                    System.out.println(getLocalName() + " wysłał odpowiedź z cenami.");
+                    System.out.println(getLocalName() + " wysłał propozycję: " + proposal.toString());
                 } else {
                     block();
                 }

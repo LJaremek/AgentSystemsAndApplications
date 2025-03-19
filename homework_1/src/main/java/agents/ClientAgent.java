@@ -10,6 +10,8 @@ import jade.lang.acl.ACLMessage;
 
 public class ClientAgent extends Agent {
 
+    private AID chosenDeliveryAgent;
+
     @Override
     protected void setup() {
         System.out.println(getLocalName() + " - uruchomiony.");
@@ -23,27 +25,47 @@ public class ClientAgent extends Agent {
             DFAgentDescription[] result = DFService.search(this, template);
             System.out.println(getLocalName() + " znalazł " + result.length + " DeliveryAgentów.");
 
-            // Wysyłanie szczegółów zamówienia do wszystkich znalezionych DeliveryAgentów
-            ACLMessage orderMsg = new ACLMessage(ACLMessage.REQUEST);
-            for (DFAgentDescription dfd : result) {
-                orderMsg.addReceiver(dfd.getName());
+            if (result.length > 0) {
+                // Wybierz pierwszego dla uproszczenia
+                chosenDeliveryAgent = result[0].getName();
+
+                // Wysyłanie zamówienia do wybranego DeliveryAgenta
+                ACLMessage orderMsg = new ACLMessage(ACLMessage.REQUEST);
+                orderMsg.addReceiver(chosenDeliveryAgent);
+                orderMsg.setContent("Order: milk, coffee, rice");
+                orderMsg.setConversationId("order-delivery");
+                send(orderMsg);
+                System.out.println(getLocalName() + " wysłał zamówienie: milk, coffee, rice");
+            } else {
+                System.out.println(getLocalName() + " nie znalazł żadnych DeliveryAgentów.");
             }
-            orderMsg.setContent("Order: milk, coffee, rice");
-            orderMsg.setConversationId("order-delivery");
-            send(orderMsg);
-            System.out.println(getLocalName() + " wysłał zamówienie: milk, coffee, rice");
 
         } catch (FIPAException fe) {
             fe.printStackTrace();
         }
 
-        // Dodanie behawioru obsługującego odpowiedzi od DeliveryAgentów
+        // Behawior obsługujący odpowiedzi od DeliveryAgentów
         addBehaviour(new CyclicBehaviour() {
             @Override
             public void action() {
-                ACLMessage reply = receive();
-                if (reply != null) {
-                    System.out.println(getLocalName() + " otrzymał odpowiedź: " + reply.getContent());
+                ACLMessage msg = receive();
+                if (msg != null) {
+                    String convId = msg.getConversationId();
+                    if ("offer-delivery".equals(convId)) {
+                        // Otrzymano ofertę
+                        System.out.println(getLocalName() + " otrzymał ofertę: " + msg.getContent());
+                        // Po otrzymaniu oferty, wysyłamy potwierdzenie (płatność)
+                        ACLMessage payment = new ACLMessage(ACLMessage.INFORM);
+                        payment.addReceiver(msg.getSender());
+                        payment.setConversationId("payment-delivery");
+                        payment.setContent("Payment: 50zl");
+                        send(payment);
+                        System.out.println(getLocalName() + " wysłał potwierdzenie płatności.");
+                    } else if ("confirmation-delivery".equals(convId)) {
+                        // Otrzymano potwierdzenie realizacji zamówienia
+                        System.out.println(
+                                getLocalName() + " otrzymał potwierdzenie realizacji zamówienia: " + msg.getContent());
+                    }
                 } else {
                     block();
                 }
