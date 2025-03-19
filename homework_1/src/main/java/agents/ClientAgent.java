@@ -15,11 +15,21 @@ public class ClientAgent extends Agent {
     private List<AID> deliveryAgents = new ArrayList<>();
     private Map<AID, Double> receivedOffers = new HashMap<>();
     private AID selectedDeliveryAgent;
-    private final String ORDER_DETAILS = "Order: milk, coffee, rice";
+    private String orderDetails = "Order: milk, coffee, rice";
 
     @Override
     protected void setup() {
         System.out.println(getLocalName() + " - started.");
+
+        Object[] args = getArguments();
+        if (args != null && args.length > 0) {
+            try {
+                orderDetails = (String) args[0];
+            } catch (Exception e) {
+                System.out.println(
+                        getLocalName() + " - argument parsing error, I use default order details.");
+            }
+        }
 
         addBehaviour(new WakerBehaviour(this, 2000) {
             @Override
@@ -46,6 +56,7 @@ public class ClientAgent extends Agent {
                 System.out.println("No available delivery agents.");
             }
         } catch (FIPAException fe) {
+            System.out.println(getLocalName() + " - search error in DF: " + fe.getMessage());
             fe.printStackTrace();
         }
     }
@@ -54,7 +65,7 @@ public class ClientAgent extends Agent {
         for (AID aid : deliveryAgents) {
             ACLMessage orderMsg = new ACLMessage(ACLMessage.REQUEST);
             orderMsg.addReceiver(aid);
-            orderMsg.setContent(ORDER_DETAILS);
+            orderMsg.setContent(orderDetails);
             orderMsg.setConversationId("order-delivery");
             send(orderMsg);
             System.out.println(getLocalName() + " sent an order request to " + aid.getLocalName());
@@ -80,7 +91,7 @@ public class ClientAgent extends Agent {
                         selectBestOffer();
                     }
                 } catch (NumberFormatException e) {
-                    System.out.println("Error parsing price from the offer.");
+                    System.out.println("Error parsing price from the offer: " + e.getMessage());
                 }
             } else {
                 long elapsed = System.currentTimeMillis() - startTime;

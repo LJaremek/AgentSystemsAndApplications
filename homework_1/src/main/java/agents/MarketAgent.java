@@ -12,20 +12,28 @@ import java.util.Map;
 
 public class MarketAgent extends Agent {
 
-    // Example inventory: product -> price
+    // Inventory: product -> price
     private Map<String, Double> inventory;
 
     @Override
     protected void setup() {
         System.out.println(getLocalName() + " - started.");
 
-        // Initializing inventory
+        Object[] args = getArguments();
         inventory = new HashMap<>();
-        inventory.put("milk", 5.0);
-        inventory.put("coffee", 30.0);
-        inventory.put("rice", 4.0);
+        if (args != null && args.length > 0) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Double> passedInventory = (Map<String, Double>) args[0];
+                inventory.putAll(passedInventory);
+            } catch (Exception e) {
+                System.out.println(getLocalName() + " - argument parsing error, I use the default inventory.");
+                setDefaultInventory();
+            }
+        } else {
+            setDefaultInventory();
+        }
 
-        // Registering MarketAgent in DF
         ServiceDescription sd = new ServiceDescription();
         sd.setType("MarketService");
         sd.setName(getLocalName() + "-MarketService");
@@ -36,10 +44,10 @@ public class MarketAgent extends Agent {
             DFService.register(this, dfd);
             System.out.println(getLocalName() + " registered in DF as: " + sd.getName());
         } catch (FIPAException fe) {
+            System.out.println(getLocalName() + " - DF registration error: " + fe.getMessage());
             fe.printStackTrace();
         }
 
-        // Behavior responding to CFP from DeliveryAgents
         addBehaviour(new CyclicBehaviour() {
             @Override
             public void action() {
@@ -70,11 +78,18 @@ public class MarketAgent extends Agent {
         });
     }
 
+    private void setDefaultInventory() {
+        inventory.put("milk", 5.0);
+        inventory.put("coffee", 30.0);
+        inventory.put("rice", 4.0);
+    }
+
     @Override
     protected void takeDown() {
         try {
             DFService.deregister(this);
         } catch (FIPAException fe) {
+            System.out.println(getLocalName() + " - error during deregistration from the DF: " + fe.getMessage());
             fe.printStackTrace();
         }
         System.out.println(getLocalName() + " has shut down.");

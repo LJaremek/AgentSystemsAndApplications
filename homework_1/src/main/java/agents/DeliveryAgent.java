@@ -14,12 +14,21 @@ public class DeliveryAgent extends Agent {
 
     private String orderDetails;
     private AID clientAgent;
+    private double deliveryFee = 10.0;
 
     @Override
     protected void setup() {
         System.out.println(getLocalName() + " - started.");
 
-        // Registering DeliveryAgent in DF
+        Object[] args = getArguments();
+        if (args != null && args.length > 0) {
+            try {
+                deliveryFee = Double.parseDouble(args[0].toString());
+            } catch (Exception e) {
+                System.out.println(getLocalName() + " - error parsing delivery charge, I use default value.");
+            }
+        }
+
         ServiceDescription sd = new ServiceDescription();
         sd.setType("DeliveryService");
         sd.setName(getLocalName() + "-DeliveryService");
@@ -30,6 +39,7 @@ public class DeliveryAgent extends Agent {
             DFService.register(this, dfd);
             System.out.println(getLocalName() + " registered in DF as: " + sd.getName());
         } catch (FIPAException fe) {
+            System.out.println(getLocalName() + " - registration error in DF: " + fe.getMessage());
             fe.printStackTrace();
         }
 
@@ -60,7 +70,7 @@ public class DeliveryAgent extends Agent {
                 ACLMessage paymentMsg = receive(mt);
                 if (paymentMsg != null) {
                     System.out.println(getLocalName() + " received payment: " + paymentMsg.getContent());
-                    // Finalizing order – sending confirmation message
+                    // Finalizacja zamówienia – wysyłanie potwierdzenia
                     ACLMessage confirmation = paymentMsg.createReply();
                     confirmation.setConversationId("confirmation-delivery");
                     confirmation.setContent("Order completed.");
@@ -80,11 +90,10 @@ public class DeliveryAgent extends Agent {
         // (e.g., "milk=5.0,coffee=30.0,rice=4.0")
         private Map<AID, String> proposals = new HashMap<>();
         private long startTime;
-        private final long TIMEOUT = 5000; // 5 seconds
+        private final long TIMEOUT = 5000; // 5 sekund
 
         @Override
         public void onStart() {
-            // Searching for MarketAgents in DF
             DFAgentDescription template = new DFAgentDescription();
             ServiceDescription sd = new ServiceDescription();
             sd.setType("MarketService");
@@ -96,10 +105,10 @@ public class DeliveryAgent extends Agent {
                 }
                 System.out.println(getLocalName() + " found " + marketAgents.size() + " MarketAgents.");
             } catch (FIPAException fe) {
+                System.out.println(getLocalName() + " - MarketAgents search error: " + fe.getMessage());
                 fe.printStackTrace();
             }
 
-            // Sending CFP to all MarketAgents
             ACLMessage cfp = new ACLMessage(ACLMessage.CFP);
             for (AID market : marketAgents) {
                 cfp.addReceiver(market);
@@ -119,7 +128,6 @@ public class DeliveryAgent extends Agent {
             long elapsed = System.currentTimeMillis() - startTime;
             long remainingTime = TIMEOUT - elapsed;
             if (remainingTime > 0) {
-                // Receiving message in blocking mode with a timeout
                 ACLMessage reply = myAgent.blockingReceive(mt, remainingTime);
                 if (reply != null) {
                     proposals.put(reply.getSender(), reply.getContent());
@@ -137,7 +145,6 @@ public class DeliveryAgent extends Agent {
 
         @Override
         public int onEnd() {
-            // Processing received proposals and selecting the best options
             String[] itemsArray = orderDetails.split(",");
             List<String> remainingItems = new ArrayList<>();
             for (String item : itemsArray) {
@@ -147,7 +154,7 @@ public class DeliveryAgent extends Agent {
             double cumulativeCost = 0.0;
             List<String> selectedMarkets = new ArrayList<>();
 
-            // Transforming received proposals into product-price maps
+            // product -> price
             Map<AID, Map<String, Double>> marketProposals = new HashMap<>();
             for (Map.Entry<AID, String> entry : proposals.entrySet()) {
                 Map<String, Double> productPrices = new HashMap<>();
@@ -160,14 +167,13 @@ public class DeliveryAgent extends Agent {
                             double price = Double.parseDouble(keyVal[1].trim());
                             productPrices.put(product, price);
                         } catch (NumberFormatException e) {
-                            // Ignore invalid price
+                            System.out.println(getLocalName() + " - product price parsing error: " + part);
                         }
                     }
                 }
                 marketProposals.put(entry.getKey(), productPrices);
             }
 
-            // Iterative selection of markets to fulfill the entire order
             boolean progress = true;
             while (!remainingItems.isEmpty() && progress) {
                 AID bestMarket = null;
@@ -175,7 +181,6 @@ public class DeliveryAgent extends Agent {
                 double bestCost = Double.MAX_VALUE;
                 List<String> bestProducts = new ArrayList<>();
 
-                // Checking available products for each market
                 for (Map.Entry<AID, Map<String, Double>> entry : marketProposals.entrySet()) {
                     Map<String, Double> productPrices = entry.getValue();
                     List<String> availableProducts = new ArrayList<>();
@@ -200,7 +205,6 @@ public class DeliveryAgent extends Agent {
                     progress = false;
                     break;
                 }
-                // Storing selected market and removing covered products
                 cumulativeCost += bestCost;
                 selectedMarkets.add(bestMarket.getLocalName() + " (products: " + String.join(", ", bestProducts) + ")");
                 remainingItems.removeAll(bestProducts);
@@ -208,16 +212,13 @@ public class DeliveryAgent extends Agent {
 
             String offer;
             if (!remainingItems.isEmpty()) {
-                // Unable to fulfill the entire order
                 offer = "Unable to complete the full order. Missing: " + String.join(", ", remainingItems);
             } else {
-                // Adding fixed delivery fee (e.g., 10zl)
-                double finalPrice = cumulativeCost + 10;
+                double finalPrice = cumulativeCost + deliveryFee;
                 offer = "Offer: Final Price = " + finalPrice + "zl (selected markets: "
                         + String.join("; ", selectedMarkets) + ")";
             }
 
-            // Sending offer to ClientAgent
             ACLMessage offerMsg = new ACLMessage(ACLMessage.INFORM);
             offerMsg.addReceiver(clientAgent);
             offerMsg.setConversationId("offer-delivery");
@@ -234,6 +235,7 @@ public class DeliveryAgent extends Agent {
         try {
             DFService.deregister(this);
         } catch (FIPAException fe) {
+            System.out.println(getLocalName() + " - error during deregistration from the DF: " + fe.getMessage());
             fe.printStackTrace();
         }
         System.out.println(getLocalName() + " has shut down.");
