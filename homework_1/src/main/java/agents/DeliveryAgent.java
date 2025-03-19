@@ -60,7 +60,7 @@ public class DeliveryAgent extends Agent {
                 ACLMessage paymentMsg = receive(mt);
                 if (paymentMsg != null) {
                     System.out.println(getLocalName() + " otrzymał płatność: " + paymentMsg.getContent());
-                    // Symulacja finalizacji zamówienia
+                    // Finalizacja zamówienia – wysłanie potwierdzenia realizacji
                     ACLMessage confirmation = paymentMsg.createReply();
                     confirmation.setConversationId("confirmation-delivery");
                     confirmation.setContent("Zamówienie zrealizowane.");
@@ -76,6 +76,8 @@ public class DeliveryAgent extends Agent {
     private class PriceEstimationBehaviour extends Behaviour {
         private boolean finished = false;
         private List<AID> marketAgents = new ArrayList<>();
+        // Mapy z propozycjami – klucz: AID MarketAgenta, wartość: surowa treść
+        // propozycji (np. "milk=5.0,coffee=30.0,rice=4.0")
         private Map<AID, String> proposals = new HashMap<>();
         private long startTime;
         private final long TIMEOUT = 5000; // 5 sekund
@@ -117,8 +119,7 @@ public class DeliveryAgent extends Agent {
             long elapsed = System.currentTimeMillis() - startTime;
             long remainingTime = TIMEOUT - elapsed;
             if (remainingTime > 0) {
-                // Używamy blockingReceive, aby czekać na wiadomość maksymalnie przez
-                // remainingTime milisekund.
+                // Odbieramy wiadomość blokująco z limitem czasu
                 ACLMessage reply = myAgent.blockingReceive(mt, remainingTime);
                 if (reply != null) {
                     proposals.put(reply.getSender(), reply.getContent());
@@ -126,7 +127,6 @@ public class DeliveryAgent extends Agent {
                             + reply.getSender().getLocalName() + ": " + reply.getContent());
                 }
             }
-            // Sprawdzamy, czy upłynął czas oczekiwania.
             finished = (System.currentTimeMillis() - startTime) >= TIMEOUT;
         }
 
@@ -137,57 +137,85 @@ public class DeliveryAgent extends Agent {
 
         @Override
         public int onEnd() {
-            // Przetwarzanie otrzymanych propozycji
-            String[] items = orderDetails.split(",");
-            items = Arrays.stream(items).map(String::trim).toArray(String[]::new);
+            // Uzupełniona logika – iteracyjny wybór rynków
+            String[] itemsArray = orderDetails.split(",");
+            List<String> remainingItems = new ArrayList<>();
+            for (String item : itemsArray) {
+                remainingItems.add(item.trim());
+            }
 
-            AID bestMarket = null;
-            int bestCount = -1;
-            double bestPrice = Double.MAX_VALUE;
+            double cumulativeCost = 0.0;
+            List<String> selectedMarkets = new ArrayList<>();
 
+            // Przetwarzamy otrzymane propozycje – przekształcamy je na mapy produktów z
+            // cenami
+            Map<AID, Map<String, Double>> marketProposals = new HashMap<>();
             for (Map.Entry<AID, String> entry : proposals.entrySet()) {
-                String proposal = entry.getValue();
-                String[] parts = proposal.split(",");
-                int count = 0;
-                double total = 0;
-                Map<String, Double> marketPrices = new HashMap<>();
+                Map<String, Double> productPrices = new HashMap<>();
+                String[] parts = entry.getValue().split(",");
                 for (String part : parts) {
                     String[] keyVal = part.split("=");
                     if (keyVal.length == 2) {
-                        String product = keyVal[0].trim();
                         try {
+                            String product = keyVal[0].trim();
                             double price = Double.parseDouble(keyVal[1].trim());
-                            marketPrices.put(product, price);
+                            productPrices.put(product, price);
                         } catch (NumberFormatException e) {
                             // ignoruj nieprawidłową cenę
                         }
                     }
                 }
-                for (String item : items) {
-                    if (marketPrices.containsKey(item)) {
-                        count++;
-                        total += marketPrices.get(item);
-                    }
-                }
-                System.out.println(getLocalName() + " - " + entry.getKey().getLocalName()
-                        + ": dostępność=" + count + ", cena=" + total);
-                if (count > bestCount || (count == bestCount && total < bestPrice)) {
-                    bestCount = count;
-                    bestPrice = total;
-                    bestMarket = entry.getKey();
-                }
+                marketProposals.put(entry.getKey(), productPrices);
             }
 
-            double finalPrice;
+            // Iteracyjny wybór rynków dla pokrycia całego zamówienia
+            boolean progress = true;
+            while (!remainingItems.isEmpty() && progress) {
+                AID bestMarket = null;
+                int bestCount = 0;
+                double bestCost = Double.MAX_VALUE;
+                List<String> bestProducts = new ArrayList<>();
+
+                // Dla każdego rynku określamy, które z pozostałych produktów są dostępne
+                for (Map.Entry<AID, Map<String, Double>> entry : marketProposals.entrySet()) {
+                    Map<String, Double> productPrices = entry.getValue();
+                    List<String> availableProducts = new ArrayList<>();
+                    double cost = 0.0;
+                    for (String item : remainingItems) {
+                        if (productPrices.containsKey(item)) {
+                            availableProducts.add(item);
+                            cost += productPrices.get(item);
+                        }
+                    }
+                    int count = availableProducts.size();
+                    if (count > 0) {
+                        if (count > bestCount || (count == bestCount && cost < bestCost)) {
+                            bestCount = count;
+                            bestCost = cost;
+                            bestMarket = entry.getKey();
+                            bestProducts = availableProducts;
+                        }
+                    }
+                }
+                if (bestMarket == null || bestCount == 0) {
+                    progress = false;
+                    break;
+                }
+                // Zapisujemy wybrany rynek oraz usuwamy pokryte produkty
+                cumulativeCost += bestCost;
+                selectedMarkets.add(bestMarket.getLocalName() + " (produkty: " + String.join(", ", bestProducts) + ")");
+                remainingItems.removeAll(bestProducts);
+            }
+
             String offer;
-            if (bestMarket != null) {
-                // Dodajemy stałą opłatę (np. 10zl)
-                finalPrice = bestPrice + 10;
-                offer = "Oferta: Final Price = " + finalPrice + "zl (wybrany rynek: "
-                        + bestMarket.getLocalName() + ")";
+            if (!remainingItems.isEmpty()) {
+                // Nie udało się zebrać wszystkich produktów
+                offer = "Nie można zrealizować całego zamówienia. Brakuje: " + String.join(", ", remainingItems);
             } else {
-                finalPrice = 0;
-                offer = "Brak ofert od MarketAgentów.";
+                // Dodajemy stałą opłatę (np. 10zl)
+                double finalPrice = cumulativeCost + 10;
+                offer = "Oferta: Final Price = " + finalPrice + "zl (wybrane rynki: "
+                        + String.join("; ", selectedMarkets) + ")";
             }
 
             // Wysyłamy ofertę do ClientAgent
