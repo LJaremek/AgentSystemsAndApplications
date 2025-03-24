@@ -12,6 +12,7 @@ Sends requests to DeliveryAgent and collects offers.
 
 Selects the cheapest option.
 
+
 #### DeliveryAgent
 Registers as a supplier (DeliveryService) with DF.
 
@@ -19,12 +20,11 @@ Contacts MarketAgents to quote for goods.
 
 Sends the quote back to the ClientAgent.
 
+
 #### MarketAgent
 Stores product prices.
 
 Responds to DeliveryAgent queries with prices of available products.
-
-Translated with DeepL.com (free version)
 
 
 ### Arguments
@@ -37,6 +37,7 @@ customInventory.put("milk", 4.5);
 customInventory.put("coffee", 28.0);
 customInventory.put("rice", 3.8);
 ```
+
 
 ### Example results
 ```
