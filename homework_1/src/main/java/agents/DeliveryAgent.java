@@ -70,7 +70,7 @@ public class DeliveryAgent extends Agent {
                 ACLMessage paymentMsg = receive(mt);
                 if (paymentMsg != null) {
                     System.out.println(getLocalName() + " received payment: " + paymentMsg.getContent());
-                    // Finalizacja zamówienia – wysyłanie potwierdzenia
+                    // Order finalisation - sending confirmation
                     ACLMessage confirmation = paymentMsg.createReply();
                     confirmation.setConversationId("confirmation-delivery");
                     confirmation.setContent("Order completed.");
@@ -90,7 +90,7 @@ public class DeliveryAgent extends Agent {
         // (e.g., "milk=5.0,coffee=30.0,rice=4.0")
         private Map<AID, String> proposals = new HashMap<>();
         private long startTime;
-        private final long TIMEOUT = 5000; // 5 sekund
+        private final long TIMEOUT = 5000; // 5 seconds
 
         @Override
         public void onStart() {

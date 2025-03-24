@@ -76,7 +76,7 @@ public class ClientAgent extends Agent {
     private class OfferCollector extends CyclicBehaviour {
         private long startTime = System.currentTimeMillis();
         private final long TIMEOUT = 5000; // 5 seconds
-        private boolean offerSelected = false; // new flag for calling selectBestOffer() only one time
+        private boolean offerSelected = false; // the flag for calling selectBestOffer() only one time
 
         @Override
         public void action() {
