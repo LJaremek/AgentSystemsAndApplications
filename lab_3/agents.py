@@ -26,3 +26,19 @@ class PersonAgent(Agent):
 
         new_position = self.random.choice(possible_movements)
         self.model.grid.move_agent(self, new_position)
+
+    def learn_about_trend(self) -> None:
+        self.known_about_trend = True
+
+    def spread_trend(self) -> None:
+        if self.known_about_trend:
+            print(f"[{self.unique_id}] I dont know about trend")
+            return
+
+        encountered_agents = self.model.grid.get_cell_list_contents([self.pos])
+        del encountered_agents[encountered_agents.index(self)]
+
+        for agent in encountered_agents:
+            if agent.sport_enthusiast or self.random.random() < self.prob:
+                agent.learn_about_trend()
+                print(f"[{self.unique_id}] Now I know about the trend")

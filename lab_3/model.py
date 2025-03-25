@@ -5,7 +5,7 @@ from agents import PersonAgent
 
 
 class TrendModel(Model):
-    def __init__(self, population: int, width: int = 10, height: int = 10, seed: int = None) -> None:
+    def __init__(self, population: int = 5, width: int = 10, height: int = 10, seed: int = None) -> None:
         super().__init__(seed=seed)
 
         self.grid = MultiGrid(width, height, True)
@@ -19,6 +19,7 @@ class TrendModel(Model):
     def step(self) -> None:
         self.agents.shuffle_do("introduce_self")
         self.agents.shuffle_do("move_around")
+        self.agents.do("spread_trend")
 
     def place_agents_on_grid(self) -> None:
         x_range = self.rng.integers(0, self.width, self.population)
